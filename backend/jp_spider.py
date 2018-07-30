@@ -297,5 +297,33 @@ def main():
             next_url = run_spider(next_url, proxies, redis_movie, download_path)
             random_sleep()
 
+    url_list = list()
+    movies = redis_movie.keys()
+    for key in movies:
+        try:
+            movie = redis_movie.get(key)
+            movie = json.loads(movie)
+            movie_genre = [i.get('url') for i in movie.get('movie_genre')]
+            url_list += movie_genre
+            movie_star = [i.get('url') for i in movie.get('movie_star')]
+            url_list += movie_star
+            url_list.append(movie.get('movie_director_url'))
+            url_list.append(movie.get('movie_make_url'))
+            url_list.append(movie.get('movie_publish_url'))
+            url_list.append(movie.get('movie_series_url'))
+            url_list = [i for i in url_list if i is not None]
+        except Exception as e:
+            pass
+
+    url_list = list(set(url_list))
+    for url in url_list:
+        next_url = run_spider(url, proxies, redis_movie, download_path)
+        while next_url:
+            next_url = run_spider(next_url, proxies, redis_movie, download_path)
+            random_sleep()
+
+
 if __name__ == "__main__":
-    main()
+    while True:
+        main()
+        time.sleep(600)

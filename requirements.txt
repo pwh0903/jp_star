@@ -3,3 +3,4 @@ redis
 requests
 requesocks
 PySocks
+shadowsocks

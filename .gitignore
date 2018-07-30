@@ -1,3 +1,5 @@
 env/*
 .vscode/*
 download/*
+redis_backup/*
+.DS_Store
