@@ -1,4 +1,5 @@
 env/*
+es/*
 .vscode/*
 download/*
 redis_backup/*

@@ -1,6 +1,5 @@
 bs4
 redis
 requests
-requesocks
-PySocks
-shadowsocks
+lxml
+elasticsearch

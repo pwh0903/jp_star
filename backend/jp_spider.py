@@ -4,7 +4,7 @@ import os
 import re
 import logging
 import random
-from urlparse import urljoin
+from urllib.parse import urljoin
 from pprint import pprint
 import redis
 import requests
@@ -137,6 +137,8 @@ def detail_parser(movie_detail_page, movie_info, movie_img_path, s, proxies, bas
             print('no director info for {}'.format(movie_url))
     except Exception as e:
         print('faile to parse movie director, error: {}'.format(e))
+        movie_info['movie_director_name'] = None
+        movie_info['movie_director_url'] = None
 
 
     try:
@@ -145,6 +147,8 @@ def detail_parser(movie_detail_page, movie_info, movie_img_path, s, proxies, bas
         movie_info['movie_make_url'] = movie_maker.get('href').strip()
     except Exception as e:
         print('faile to parse movie maker, error: {}'.format(e))
+        movie_info['movie_maker_name'] = None
+        movie_info['movie_make_url'] = None
 
     try:
         movie_publish = movie_detail_list[movie_publish_index].a
@@ -152,6 +156,8 @@ def detail_parser(movie_detail_page, movie_info, movie_img_path, s, proxies, bas
         movie_info['movie_publish_url'] = movie_publish.get('href').strip()
     except Exception as e:
         print('faile to parse movie publisher, error: {}'.format(e))
+        movie_info['movie_publish_name'] = None
+        movie_info['movie_publish_url'] = None
 
     try:
         if len_movie_detail_list > 10:
@@ -164,6 +170,8 @@ def detail_parser(movie_detail_page, movie_info, movie_img_path, s, proxies, bas
             print('no series info for {}'.format(movie_url))
     except Exception as e:
         print('faile to parse movie series, error: {}'.format(e))
+        movie_info['movie_series_name'] = None
+        movie_info['movie_series_url'] = None
 
     movie_genre = list()
     try:
@@ -243,7 +251,7 @@ def run_spider(url, proxies, redis_movie, download_path):
             r = s.get(movie_url, proxies=proxies, verify=False)
             if r.status_code != 200:
                 fail_dict[movie_id] = movie_url
-                print '{} failed to get detail page, status code: {}'.format(movie_id, r.status_code)
+                print('{} failed to get detail page, status code: {}'.format(movie_id, r.status_code))
                 fail_dict[movie_id] = movie_url
                 continue
             movie_detail_page = BeautifulSoup(r.content, 'lxml')
@@ -258,7 +266,7 @@ def run_spider(url, proxies, redis_movie, download_path):
             fail_dict[movie_id] = movie_url
             continue
         redis_movie.set(movie_id, json.dumps(movie_info))
-        random_sleep()
+        # random_sleep()
         print('set info in redis done, sleep...\n')
 
     return next_url
@@ -295,7 +303,7 @@ def main():
         next_url = run_spider(url, proxies, redis_movie, download_path)
         while next_url:
             next_url = run_spider(next_url, proxies, redis_movie, download_path)
-            random_sleep()
+            # random_sleep()
 
     url_list = list()
     movies = redis_movie.keys()
@@ -320,7 +328,7 @@ def main():
         next_url = run_spider(url, proxies, redis_movie, download_path)
         while next_url:
             next_url = run_spider(next_url, proxies, redis_movie, download_path)
-            random_sleep()
+            # random_sleep()
 
 
 if __name__ == "__main__":
