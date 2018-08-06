@@ -1,49 +1,12 @@
-import json
-import time
-import asyncio
 import os
 import re
-import random
 from urllib.parse import urljoin
-import redis
-import requests
+import json
+import asyncio
 from bs4 import BeautifulSoup
-from requests.packages.urllib3.exceptions import InsecureRequestWarning
-requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
-
-
-async def get_url(s, url, proxies):
-    r = s.get(url, proxies=proxies, verify=False)
-    return r
-
-
-async def download_img(s, url, proxies, movie_path, img_name):
-    status = False
-    try:
-        # r = await s.get(url, proxies=proxies, verify=False)
-        r = await get_url(s, url, proxies)
-        if img_name is None:
-            img_name = '{}.jpg'.format(str(img_name))
-        with open(os.path.join(movie_path, img_name), 'wb') as f:
-            f.write(r.content)
-        status = True
-    except Exception as e:
-        # print('failed to download {}, error: {}'.format(url, e))
-        pass
-    return status
-
-
-def random_sleep():
-    time.sleep(random.randint(1, 5))
-
-
-def build_request_session():
-    s = requests.Session()
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36'
-    }
-    s.headers.update(headers)
-    return s
+import redis
+import aiohttp
+from aiosocksy.connector import ProxyClientRequest, ProxyConnector
 
 
 def movie_in_redis(movie_id, redis_movie):
@@ -51,33 +14,76 @@ def movie_in_redis(movie_id, redis_movie):
     return in_redis
 
 
-async def get_magnet(magnet_info, base_url, movie_url, proxies):
-    mangnet_list = list()
-    url = '/ajax/uncledatoolsbyajax.php?'
-    url = urljoin(base_url, url) + '?'
-    for key, value in magnet_info.items():
-        url = '{}{}={}&'.format(url, key, value)
-    url = url.strip('&')
-    headers = {
-        "referer": movie_url,
-        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36",
-        "x-requested-with": "XMLHttpRequest"
-    }
-    r = requests.get(url, headers=headers, proxies=proxies, verify=False)
-    tmp_list = BeautifulSoup(r.content, 'lxml').find_all('tr')
-    for magnet in tmp_list:
-        mangnet_dict = dict()
-        magnet_items = magnet.find_all('td')
-        mangnet_dict['title'] = magnet_items[0].text.strip()
-        mangnet_dict['url'] = magnet_items[0].a.get('href').strip()
-        mangnet_dict['size'] = magnet_items[1].text.strip()
-        mangnet_dict['date'] = magnet_items[2].text.strip()
-        mangnet_list.append(mangnet_dict)
-    return mangnet_list
+async def get_url(url, headers):
+    content = False
+    conn = ProxyConnector()
+    try:
+        async with aiohttp.ClientSession(connector=conn, request_class=ProxyClientRequest) as session:
+            async with session.get(url, proxy='socks5://127.0.0.1:1080', headers=headers) as resp:
+                if resp.status == 200:
+                    content = await resp.text()
+                else:
+                    print('failed to get {}, status {}'.format(url, resp.status))
+    except Exception as e:
+        print('failed to get {}, error {}'.format(url, e))
+    return content
 
 
-async def detail_parser(movie_detail_page, movie_info, movie_img_path, s, proxies, base_url, movie_url):
-    movie_imgs = os.listdir(movie_img_path)
+async def get_img_url(url, session, headers):
+    content = False
+    async with session.get(url, headers=headers) as resp:
+        if resp.status == 200:
+            content = await resp.read()
+        else:
+            print('failed to get {}, status {}'.format(url, resp.status))
+    return content
+
+
+async def download_img(img_name, movie_path, url, headers, session):
+    try:
+        content = await get_img_url(url, session, headers)
+        if content is None:
+            pass
+        else:
+            print(movie_path, img_name)
+            with open(os.path.join(movie_path, img_name), 'wb') as f:
+                f.write(content)
+    except Exception as e:
+        print(e)
+
+
+async def get_magnet(magnet_info, base_url, movie_url):
+    magnet_list = list()
+    try:
+        url = '/ajax/uncledatoolsbyajax.php?'
+        url = urljoin(base_url, url) + '?'
+        for key, value in magnet_info.items():
+            url = '{}{}={}&'.format(url, key, value)
+        url = url.strip('&')
+        headers = {
+            "referer": movie_url,
+            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36",
+            "x-requested-with": "XMLHttpRequest"
+        }
+        content = await get_url(url, headers)
+        if content is None:
+            return magnet_list
+        tmp_list = BeautifulSoup(content, 'lxml').find_all('tr')
+        for magnet in tmp_list:
+            magnet_dict = dict()
+            magnet_items = magnet.find_all('td')
+            magnet_dict['title'] = magnet_items[0].text.strip()
+            magnet_dict['url'] = magnet_items[0].a.get('href').strip()
+            magnet_dict['size'] = magnet_items[1].text.strip()
+            magnet_dict['date'] = magnet_items[2].text.strip()
+            magnet_list.append(magnet_dict)
+    except Exception as e:
+        print('failed to get magnet info of {}, error: {}'.format(movie_url, e))
+    return magnet_list
+
+
+async def detail_parser(movie_detail_page, movie_info, movie_img_path,
+                        base_url, movie_url, headers, session):
     movie_info['title'] = movie_detail_page.find_all('h3')[0].text
 
     # parse magnet url
@@ -89,7 +95,7 @@ async def detail_parser(movie_detail_page, movie_info, movie_img_path, s, proxie
         key = i.split()[1]
         value = i.split()[-1]
         magnet_info[key] = value
-    movie_info['magnet_list'] = await get_magnet(magnet_info, base_url, movie_url, proxies)
+    movie_info['magnet_list'] = await get_magnet(magnet_info, base_url, movie_url)
 
     # get movie detail info
     movie_detail_list = movie_detail_page.find_all(class_='col-md-3 info')[0].find_all('p')
@@ -202,74 +208,75 @@ async def detail_parser(movie_detail_page, movie_info, movie_img_path, s, proxie
     movie_info['movie_star'] = movie_star
 
     # download images
+    img_dict = dict()
     frontcover_url = movie_detail_page.find_all(class_='bigImage')[0].get('href').strip()
+    img_dict['frontvocer.jpg'] = frontcover_url
     sample_imgs = [i.get('href').strip() for i in movie_detail_page.find_all('a', class_='sample-box')]
-    await download_img(s, frontcover_url, proxies, movie_img_path, 'frontcover.jpg')
     count = 1
     for url in sample_imgs:
-        s_dl_status = await download_img(s, url, proxies, movie_img_path, '{}.jpg'.format(str(count)))
-        if s_dl_status:
-            count += 1
+        img_dict['{}.jpg'.format(count)] = url
+        count += 1
+    await asyncio.wait([download_img(img_name, movie_img_path, url, headers, session) for img_name, url in img_dict.items()])
 
 
-async def run_spider(url, proxies, redis_movie, download_path):
+async def detail_spider(movie_id, movie_url, headers, download_path, base_url, session):
+    movie_img_path = os.path.join(download_path, movie_id)
+    if not os.path.isdir(movie_img_path):
+        os.mkdir(movie_img_path)
+    movie_info = dict()
+    movie_info['id'] = movie_id
+    movie_info['url'] = movie_url
+    try:
+        print('get detail info for {} {}'.format(movie_id, movie_url))
+        content = await get_url(movie_url, headers)
+        if content is None:
+            return None
+        movie_detail_page = BeautifulSoup(content, 'lxml')
+        try:
+            await detail_parser(movie_detail_page, movie_info, movie_img_path, base_url, movie_url, headers, session)
+        except Exception as e:
+            print('failed to parse detail for {}, error: {}'.format(movie_url, e))
+    except Exception as e:
+        print('failed to get detail page for {}, error: {}'.format(movie_url, e))
+    return movie_info
+
+
+async def run_spider(url, redis_movie, download_path):
     print('fetching data from {}...\n'.format(url))
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36'
+    }
     next_url = None
-    fail_dict = {}
-    s = build_request_session()
-    # r = s.get(url, proxies=proxies, verify=False)
-    r = await get_url(s, url, proxies)
+    content = await get_url(url, headers)
 
-    if r.status_code == 200:
-        soup = BeautifulSoup(r.content, 'lxml')
+    if content:
+        soup = BeautifulSoup(content, 'lxml')
     else:
-        print('get content failed')
         return next_url
+
     try:
         next_url = urljoin(url, soup.find_all('a', id='next')[0].get('href').strip())
     except IndexError as e:
         print('failed to get next page of {}, error: {}'.format(url, e))
-        return next_url
 
     movie_list = soup.find_all(class_='movie-box')
     if len(movie_list) == 0:
         print('no movie on {}'.format(url))
         return next_url
+
+    movies = dict()
     for movie in movie_list:
-        movie_info = dict()
         movie_url = movie.get('href').strip()
         movie_id = movie_url.strip('/').split('/')[-1]
         if movie_in_redis(movie_id, redis_movie):
             print('{} already in redis, pass'.format(movie_id))
             continue
-        movie_img_path = os.path.join(download_path, movie_id)
-        if not os.path.isdir(movie_img_path):
-            os.mkdir(movie_img_path)
-        movie_info['id'] = movie_id
-        movie_info['url'] = movie_url
-        try:
-            print('get detail info for {} {}'.format(movie_id, movie_url))
-            r = s.get(movie_url, proxies=proxies, verify=False)
-            if r.status_code != 200:
-                fail_dict[movie_id] = movie_url
-                print('{} failed to get detail page, status code: {}'.format(movie_id, r.status_code))
-                fail_dict[movie_id] = movie_url
-                continue
-            movie_detail_page = BeautifulSoup(r.content, 'lxml')
-            try:
-                await detail_parser(movie_detail_page, movie_info, movie_img_path, s, proxies, url, movie_url)
-            except Exception as e:
-                print('failed to parse detail for {}, error: {}'.format(movie_url, e))
-                fail_dict[movie_id] = movie_url
-                continue
-        except Exception as e:
-            print('failed to get detail page for {}, error: {}'.format(movie_url, e))
-            fail_dict[movie_id] = movie_url
-            continue
-        redis_movie.set(movie_id, json.dumps(movie_info))
-        # random_sleep()
-        print('set info in redis done, sleep...\n')
-
+        movies[movie_id] = movie_url
+    if len(movies) > 0:
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(verify_ssl=False)) as session:
+            done, pending = await asyncio.wait([detail_spider(movie_id, movie_url, headers, download_path, url, session) for movie_id, movie_url in movies.items()])
+        for i in done:
+            redis_movie.set(movie_id, json.dumps(i.result()))
     return next_url
 
 
@@ -278,33 +285,37 @@ async def main():
     if not os.path.isdir(download_path):
         os.mkdir(download_path)
 
-    proxies = {
-        'http': 'socks5://127.0.0.1:1080',
-        'https': 'socks5://127.0.0.1:1080'
-    }
     url_list = [
         'https://www.javbus.pw',
-        # 'https://www.pornhub.com/view_video.php?viewkey=ph5b4a3a21b334c',
     ]
+
     redis_host = 'localhost'
     redis_port = 6379
     redis_pass = 'foobared'
     redis_db_movie = 0
-    # redis_db_star = 1
 
-    movie_detail_fail_list = {}
     try:
-        redis_movie = redis.StrictRedis(host=redis_host, port=redis_port, db=redis_db_movie, password=redis_pass)
+        redis_movie = redis.StrictRedis(host=redis_host,
+                                        port=redis_port,
+                                        db=redis_db_movie,
+                                        password=redis_pass)
     except Exception as e:
-        error_message = 'build redis connection failed, error: {}, shutting down...'.format(e)
+        error_message = 'build redis connection failed, error: {}'.format(e)
         print(error_message)
-        exit(1)
+        return False
 
-    for url in url_list:
-        next_url = await run_spider(url, proxies, redis_movie, download_path)
-        while next_url:
-            next_url = await run_spider(next_url, proxies, redis_movie, download_path)
-            # random_sleep()
+    done, pending = await asyncio.wait([run_spider(url, redis_movie, download_path) for url in url_list])
+    tmp_next_url = list()
+    for i in done:
+        if i.result():
+            tmp_next_url.append(i.result())
+
+    while len(tmp_next_url) > 0:
+        done, pending = await asyncio.wait([run_spider(url, redis_movie, download_path) for url in tmp_next_url])
+        tmp_next_url = list()
+        for i in done:
+            if i.result():
+                tmp_next_url.append(i.result())
 
     url_list = list()
     movies = redis_movie.keys()
@@ -325,15 +336,8 @@ async def main():
             pass
 
     url_list = list(set(url_list))
-    for url in url_list:
-        next_url = await run_spider(url, proxies, redis_movie, download_path)
-        while next_url:
-            next_url = await run_spider(next_url, proxies, redis_movie, download_path)
-            # random_sleep()
+    done, pending = await asyncio.wait([run_spider(url, redis_movie, download_path) for url in url_list])
 
-
-if __name__ == "__main__":
-    while True:
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(main())
-        time.sleep(600)
+if __name__ == '__main__':
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
