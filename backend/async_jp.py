@@ -14,6 +14,36 @@ def movie_in_redis(movie_id, redis_movie):
     return in_redis
 
 
+def insert_cata_url_in_redis(redis_movie):
+    redis_url = redis.StrictRedis(
+                                    host='127.0.0.1',
+                                    port=6379,
+                                    db=3,
+                                    password='foobared'
+                                )
+    url_list = list()
+    movies = redis_movie.keys()
+    for key in movies:
+        try:
+            movie = redis_movie.get(key)
+            movie = json.loads(movie)
+            movie_genre = [i.get('url') for i in movie.get('movie_genre')]
+            url_list += movie_genre
+            movie_star = [i.get('url') for i in movie.get('movie_star')]
+            url_list += movie_star
+            url_list.append(movie.get('movie_director_url'))
+            url_list.append(movie.get('movie_make_url'))
+            url_list.append(movie.get('movie_publish_url'))
+            url_list.append(movie.get('movie_series_url'))
+            url_list = [i for i in url_list if i is not None]
+        except Exception as e:
+            pass
+    url_list = list(set(url_list))
+    for i in url_list:
+        redis_url.set(i, 0)
+    return url_list
+
+
 async def get_url(url, headers):
     content = False
     conn = ProxyConnector()
@@ -45,7 +75,6 @@ async def download_img(img_name, movie_path, url, headers, session):
         if content is None:
             pass
         else:
-            print(movie_path, img_name)
             with open(os.path.join(movie_path, img_name), 'wb') as f:
                 f.write(content)
     except Exception as e:
@@ -238,7 +267,7 @@ async def detail_spider(movie_id, movie_url, headers, download_path, base_url, s
             print('failed to parse detail for {}, error: {}'.format(movie_url, e))
     except Exception as e:
         print('failed to get detail page for {}, error: {}'.format(movie_url, e))
-    return movie_info
+    return movie_id, movie_info
 
 
 async def run_spider(url, redis_movie, download_path):
@@ -270,13 +299,14 @@ async def run_spider(url, redis_movie, download_path):
         movie_id = movie_url.strip('/').split('/')[-1]
         if movie_in_redis(movie_id, redis_movie):
             print('{} already in redis, pass'.format(movie_id))
-            continue
-        movies[movie_id] = movie_url
+        else:
+            movies[movie_id] = movie_url
+
     if len(movies) > 0:
         async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(verify_ssl=False)) as session:
             done, pending = await asyncio.wait([detail_spider(movie_id, movie_url, headers, download_path, url, session) for movie_id, movie_url in movies.items()])
         for i in done:
-            redis_movie.set(movie_id, json.dumps(i.result()))
+            redis_movie.set(i.result()[0], json.dumps(i.result()[1]))
     return next_url
 
 
@@ -304,39 +334,43 @@ async def main():
         print(error_message)
         return False
 
-    done, pending = await asyncio.wait([run_spider(url, redis_movie, download_path) for url in url_list])
-    tmp_next_url = list()
-    for i in done:
-        if i.result():
-            tmp_next_url.append(i.result())
+    redis_url = redis.StrictRedis(
+                                host=redis_host,
+                                port=redis_port,
+                                db=3,
+                                password=redis_pass
+                                )
+    redis_url_list = [i.decode('utf-8') for i in redis_url.keys()]
+    # redis_url_list = insert_cata_url_in_redis(redis_movie)
+    url_list += redis_url_list
+    print('{} start url in redis'.format(len(url_list)))
+    url_set_list = list()
+    for num in range(len(url_list)):
+        if num % 5 == 0:
+            if num + 5 > len(url_list):
+                url_set_list.append(url_list[num: len(url_list)])
+            else:
+                url_set_list.append(url_list[num: num+5])
 
-    while len(tmp_next_url) > 0:
-        done, pending = await asyncio.wait([run_spider(url, redis_movie, download_path) for url in tmp_next_url])
-        tmp_next_url = list()
-        for i in done:
-            if i.result():
-                tmp_next_url.append(i.result())
-
-    url_list = list()
-    movies = redis_movie.keys()
-    for key in movies:
+    for url_sub_list in url_set_list:
         try:
-            movie = redis_movie.get(key)
-            movie = json.loads(movie)
-            movie_genre = [i.get('url') for i in movie.get('movie_genre')]
-            url_list += movie_genre
-            movie_star = [i.get('url') for i in movie.get('movie_star')]
-            url_list += movie_star
-            url_list.append(movie.get('movie_director_url'))
-            url_list.append(movie.get('movie_make_url'))
-            url_list.append(movie.get('movie_publish_url'))
-            url_list.append(movie.get('movie_series_url'))
-            url_list = [i for i in url_list if i is not None]
+            done, pending = await asyncio.wait([run_spider(url, redis_movie, download_path) for url in url_sub_list])
+            tmp_next_url = list()
+            for i in done:
+                if i.result():
+                    tmp_next_url.append(i.result())
+
+            while len(tmp_next_url) > 0:
+                done, pending = await asyncio.wait([run_spider(url, redis_movie, download_path) for url in tmp_next_url])
+                tmp_next_url = list()
+                for i in done:
+                    if i.result():
+                        tmp_next_url.append(i.result())
+            # print('sleep 100 seconds')
+            # await asyncio.sleep(100)
         except Exception as e:
             pass
 
-    url_list = list(set(url_list))
-    done, pending = await asyncio.wait([run_spider(url, redis_movie, download_path) for url in url_list])
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
