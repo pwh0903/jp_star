@@ -311,7 +311,7 @@ async def run_spider(url, redis_movie, download_path):
 
 
 async def main():
-    download_path = './download'
+    download_path = './download_1'
     if not os.path.isdir(download_path):
         os.mkdir(download_path)
 

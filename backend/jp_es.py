@@ -1,6 +1,7 @@
 from elasticsearch import Elasticsearch
 import datetime
 import redis
+import re
 import json
 import uuid
 from pprint import pprint
@@ -37,8 +38,14 @@ for movie_id in movie_id_list:
     if movie_info.get('title'):
         try:
             movie_data['title'] = movie_info.get('title').decode('unicode-escape')
-        except Exception as e:
-            movie_data['title'] = movie_info.get('title')
+        except AttributeError as e:
+            try:
+                tmp = movie_info.get('title')
+                tmp = '\\' + '\\'.join(re.findall('\w+', tmp))
+                tmp = bytes(tmp, encoding='utf-8').decode('unicode-escape')
+                movie_data['title'] = tmp
+            except Exception as e:
+                movie_data['title'] = movie_info.get('title')
     else:
         movie_data['title'] = None
     if movie_info.get('title'):
@@ -47,8 +54,14 @@ for movie_id in movie_id_list:
     if movie_info.get('movie_director_name'):
         try:
             movie_data['movie_director_name'] = movie_info.get('movie_director_name').decode('unicode-escape')
-        except Exception as e:
-            movie_data['movie_director_name'] = movie_info.get('movie_director_name')
+        except AttributeError as e:
+            try:
+                tmp = movie_info.get('movie_director_name')
+                tmp = '\\' + '\\'.join(re.findall('\w+', tmp))
+                tmp = bytes(tmp, encoding='utf-8').decode('unicode-escape')
+                movie_data['movie_director_name'] = tmp
+            except Exception as e:
+                movie_data['movie_director_name'] = movie_info.get('movie_director_name')
     else:
         movie_data['movie_director_name'] = None
     if movie_info.get('movie_director_name'):
@@ -57,8 +70,15 @@ for movie_id in movie_id_list:
     if movie_info.get('movie_publish_name'):
         try:
             movie_data['movie_publish_name'] = movie_info.get('movie_publish_name').decode('unicode-escape')
-        except Exception as e:
-            movie_data['movie_publish_name'] = movie_info.get('movie_publish_name')
+        except AttributeError as e:
+            try:
+                tmp = movie_info.get('movie_publish_name')
+                tmp = '\\' + '\\'.join(re.findall('\w+', tmp))
+                tmp = bytes(tmp, encoding='utf-8').decode('unicode-escape')
+                movie_data['movie_publish_name'] = tmp
+            except Exception as e:
+                movie_data['movie_publish_name'] = movie_info.get('movie_publish_name')
+
     else:
         movie_data['movie_publish_name'] = None
     if movie_info.get('movie_publish_name'):
@@ -67,8 +87,14 @@ for movie_id in movie_id_list:
     if movie_info.get('movie_maker_name'):
         try:
             movie_data['movie_maker_name'] = movie_info.get('movie_maker_name').decode('unicode-escape')
-        except Exception as e:
-            movie_data['movie_maker_name'] = movie_info.get('movie_maker_name')
+        except AttributeError as e:
+            try:
+                tmp = movie_info.get('movie_maker_name')
+                tmp = '\\' + '\\'.join(re.findall('\w+', tmp))
+                tmp = bytes(tmp, encoding='utf-8').decode('unicode-escape')
+                movie_data['movie_maker_name'] = tmp
+            except Exception as e:
+                movie_data['movie_maker_name'] = movie_info.get('movie_maker_name')
     else:
         movie_data['movie_maker_name'] = None
     if movie_info.get('movie_maker_name'):
@@ -77,40 +103,58 @@ for movie_id in movie_id_list:
     if movie_info.get('movie_series_name'):
         try:
             movie_data['movie_series_name'] = movie_info.get('movie_series_name').decode('unicode-escape')
-        except Exception as e:
-            movie_data['movie_series_name'] = movie_info.get('movie_series_name')
+        except AttributeError as e:
+            try:
+                tmp = movie_info.get('movie_series_name')
+                tmp = '\\' + '\\'.join(re.findall('\w+', tmp))
+                tmp = bytes(tmp, encoding='utf-8').decode('unicode-escape')
+                movie_data['movie_series_name'] = tmp
+            except Exception as e:
+                movie_data['movie_series_name'] = movie_info.get('movie_series_name')
     else:
         movie_data['movie_series_name'] = None
     if movie_info.get('movie_series_name'):
         movie_info.pop('movie_series_name')
 
     movie_data['movie_genre'] = list()
-    for i in movie_info['movie_genre']:
-        try:
-            tmp_name = i.get('title').decode('unicode-escape')
-        except Exception as e:
-            tmp_name = i.get('title')
-        movie_data['movie_genre'].append(tmp_name)
     if movie_info.get('movie_genre'):
+        for i in movie_info.get('movie_genre'):
+            try:
+                tmp_name = i.get('title').decode('unicode-escape')
+            except AttributeError as e:
+                try:
+                    tmp = movie_info.get('title')
+                    tmp = '\\' + '\\'.join(re.findall('\w+', tmp))
+                    tmp = bytes(tmp, encoding='utf-8').decode('unicode-escape')
+                    tmp_name = tmp
+                except Exception as e:
+                    tmp_name = i.get('title')
+            movie_data['movie_genre'].append(tmp_name)
         movie_info.pop('movie_genre')
 
-    movie_data['movie_star'] = list() 
-    for i in movie_info['movie_star']:
-        try:
-            tmp_name = i.get('name').decode('unicode-escape')
-        except Exception as e:
-            tmp_name = i.get('name')
-        movie_data['movie_star'].append(tmp_name)
-    if movie_info.get('movie_star'):   
+    movie_data['movie_star'] = list()
+    if movie_info.get('movie_star'):
+        for i in movie_info.get('movie_star'):
+            try:
+                tmp_name = i.get('name').decode('unicode-escape')
+            except AttributeError as e:
+                try:
+                    tmp = movie_info.get('name')
+                    tmp = '\\' + '\\'.join(re.findall('\w+', tmp))
+                    tmp = bytes(tmp, encoding='utf-8').decode('unicode-escape')
+                    tmp_name = tmp
+                except Exception as e:
+                    tmp_name = i.get('name')
+            movie_data['movie_star'].append(tmp_name)
         movie_info.pop('movie_star')
-    
+
     try:
         movie_data['movie_pub_date'] = datetime.datetime.strptime(movie_info.get('movie_pub_data'), '%Y-%m-%d').strftime('%Y-%m-%dT00:00:00Z')
     except Exception as e:
         movie_data['movie_pub_date'] = None
     if movie_info.get('movie_pub_data'):
         movie_info.pop('movie_pub_data')
-    
+
     movie_data.update(movie_info)
 
     es.index(index='jp_movie', doc_type='movie',id=movie_id.lower(), body=movie_data)

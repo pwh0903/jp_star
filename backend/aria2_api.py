@@ -36,6 +36,7 @@ def get_state(rpc_url, gid):
         print('failed to get state of gid {}, error: {}'.format(gid, e))
     return res
 
+
 def main():
     rpc_host = '192.168.0.10'
     rpc_port = '6800'

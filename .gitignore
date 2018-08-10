@@ -1,6 +1,6 @@
 env/*
 es/*
 .vscode/*
-download/*
+download*/*
 redis_backup/*
 .DS_Store
