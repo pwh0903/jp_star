@@ -1,4 +1,3 @@
-from pprint import pprint
 import redis
 import re
 import math
@@ -11,20 +10,6 @@ from bs4 import BeautifulSoup
 
 
 def get_token(s, auth_url, proxies):
-    cookies = {
-        "bs": "3fji3ahw4jw7i1d0zvj77kbh8ao75uc5",
-        "ss": "549086987087850421",
-        "RNLBSERVERID": "ded6856",
-        "_ga": "GA1.2.669540838.1525010683",
-        "performance_timing": "video",
-        "ua": "4c68bf180b963757ccc259f98d2f08ae",
-        "platform": "pc",
-        "_gid": "GA1.2.1118720219.1533598249",
-        "g36FastPopSessionRequestNumber": "20",
-        "expiredEnterModalShown": "1",
-        "FPSRN": "5",
-        "_gat": "1"
-    }
     token = ''
     post_data = {
         "username": "haha0903",
@@ -39,8 +24,8 @@ def get_token(s, auth_url, proxies):
 
 
 def random_sleep():
-    sleep_time = random.randint(15, 25)
-    print('sleep {} seconds'.format(sleep_time))
+    sleep_time = random.randint(35, 55)
+    print('sleep for {} seconds'.format(sleep_time))
     time.sleep(sleep_time)
 
 
@@ -129,15 +114,14 @@ def break_js(content, token_cookie):
         "RNKEY": "{}*{}:{}:{}:{}".format(n, p//n, s, a, b)
     }
     token_cookie.update(random_key)
-    return token_cookie
 
 
-def get_movie_list(s, host_url, url, proxies, token_cookie, ps_redis):
+def get_movie_list(s, host_url, url, channel_title, proxies, token_cookie, ps_redis):
     # random_key = {
     #     "RNKEY": "1001219*1131181:1408596114:3845177341:1"
     # }
     # token_cookie.update(random_key)
-    # print('fetch movie list from {}'.format(url))
+    print('fetch movie list from {}'.format(url))
     next_url = None
     movie_url_list = dict()
     retry_time = 0
@@ -158,6 +142,7 @@ def get_movie_list(s, host_url, url, proxies, token_cookie, ps_redis):
             for movie in movie_list:
                 d = dict()
                 movie = movie.a
+                d['category'] = channel_title
                 d['title'] = movie.get('title').strip()
                 d['url'] = urljoin(host_url, movie.get('href').strip())
                 if 'view_video.php' not in d['url']:
@@ -170,8 +155,8 @@ def get_movie_list(s, host_url, url, proxies, token_cookie, ps_redis):
                     print('{} {} in redis, pass'.format(movie_id, d['title']))
         else:
             retry_time += 1
-            print('load js value, will retry: {}, length of class row-5-thumbs != 1, length is {}, url: {}'.format(retry_time, len(tmp_movie_list), url))
-            token_cookie = break_js(r.content, token_cookie)
+            print('load js cookie value, will retry: {}, length of class row-5-thumbs != 1, length is {}, url: {}'.format(retry_time, len(tmp_movie_list), url))
+            break_js(r.content, token_cookie)
             random_sleep()
 
     return next_url
@@ -243,13 +228,13 @@ def main():
         all_channels_url_list = json.load(f)
 
     for channel_title, channel_url in all_channels_url_list.items():
-        if channel_title.lower() not in ['massagerooms', 'vixen']:
+        if channel_title.lower() not in ['massagerooms', 'vixen', 'faketaxi', 'blacked', 'bartty-sis', 'property-sex', 'public-agent']:
             continue
         channel_url = '{}/videos'.format(channel_url)
-        next_url = get_movie_list(s, host_url, channel_url, proxies, token_cookie, ps_redis)
+        next_url = get_movie_list(s, host_url, channel_url, channel_title, proxies, token_cookie, ps_redis)
         random_sleep()
         while next_url:
-            next_url = get_movie_list(s, host_url, next_url, proxies, token_cookie, ps_redis)
+            next_url = get_movie_list(s, host_url, next_url, channel_title, proxies, token_cookie, ps_redis)
             random_sleep()
 
 
